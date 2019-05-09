@@ -1,4 +1,4 @@
-Tool/script for 'merging' multiple directories into one via symlinks.
+[sufs](https://github.com/karlicoss/sufs) is a tool for 'merging' multiple directories into one via symlinks.
 
 I'm syncing most of my stuff via syncthing, but some of it has to be locally (mainly for stupid reasons like massive `node_modules`
 directory etc.). But it's nice to have a unified view of them so you don't have to memorize what did you put where.
