@@ -28,10 +28,11 @@ def run(from_: List[Path], to: Path):
         for src in s:
             name = src.name
             if name in spec:
+                print(f"Clashing path: {spec[name]}, {src}", file=sys.stderr)
                 errors = True
             else:
                 spec[name] = src
-    assert not errors
+    assert not errors, 'Clashing names detected!'
 
     # check_call(['stat', str(to)])
     # assert not os.access(str(to), os.W_OK)
@@ -43,9 +44,11 @@ def run(from_: List[Path], to: Path):
             if lexists(old):
                 old_src = Path(os.readlink(old))
                 if old_src == src:
+                    print(f"skipping {old}, no need to update", file=sys.stderr)
                     continue
                 else:
                     old.unlink()
+            print(f"linking  {old} -> {src}", file=sys.stderr)
             old.symlink_to(src)
     finally:
         check_call(['chmod', 'ugo-w', str(to)])
@@ -55,11 +58,12 @@ def run(from_: List[Path], to: Path):
 def main():
     p = argparse.ArgumentParser()
     p.add_argument('--to', type=Path, required=True)
-    # TODO check permissions
+    p.add_argument('sources', type=Path, nargs='+')
     # TODO inotify and run as systemd service?
     # TODO what to do with broken symliks?
     # TODO assert no regular files
-    pass
+    args = p.parse_args()
+    run(from_=args.sources, to=args.to)
 
 
 def test(tmp_path):
