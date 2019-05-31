@@ -10,8 +10,7 @@ from subprocess import check_call
 
 def run(from_: List[Path], to: Path):
     assert len(from_) > 0
-    assert to.exists()
-    assert to.is_dir()
+    assert to.is_dir() and not to.is_symlink()
 
     # TODO maybe, have init method??
     existing = list(to.iterdir())
