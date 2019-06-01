@@ -38,6 +38,23 @@ def run(from_: List[Path], to: Path):
     # ugh. no nice method in python to remove permission...
     check_call(['chmod', 'u+w', str(to)])
     try:
+        # remove old broken links which point to from_
+        for p in existing:
+            if p.exists():
+                continue
+
+            points_to = Path(os.readlink(p))
+            for src in from_:
+                try:
+                    points_to.relative_to(src)
+                    print(f'unlinking broken link {p}', file=sys.stderr)
+                    p.unlink()
+                    break
+                except ValueError:
+                    continue
+
+
+        # link new stuff
         for name, src in spec.items():
             old = to / name
             if lexists(old):
@@ -72,12 +89,13 @@ def test(tmp_path):
     c1 = tdir / 'c1'
     aaa1 = c1 / 'aaa'
     bbb  = c1 / 'bbb'
-    zzz  = c1 / 'zzz'
     c2 = tdir / 'c2'
     aaa2 = c2 / 'aaa'
     ccc  = c2 / 'ccc'
+    c3 = tdir / 'c3'
+    zzz  = c3 / 'zzz'
 
-    for d in [aaa1, bbb, zzz, aaa2, ccc]:
+    for d in [aaa1, bbb, aaa2, ccc, zzz]:
         d.mkdir(exist_ok=True, parents=True)
 
     fff = c1 / 'file'
@@ -92,37 +110,43 @@ def test(tmp_path):
 
 
     run(from_=[c1], to=merged)
-    assert set(merged.iterdir()) == {merged / 'aaa', merged / 'bbb', merged / 'zzz'}
+    assert set(merged.iterdir()) == {merged / 'aaa', merged / 'bbb'}
 
 
     # should set proper permissions after
     with pytest.raises(PermissionError):
         (merged / 'alalala').touch()
 
+    run(from_=[c1, c3], to=merged)
+    assert set(merged.iterdir()) == {merged / 'aaa', merged / 'bbb', merged / 'zzz'}
 
     zzz.rmdir()
     run(from_=[c1], to=merged)
-    # zzz link stays regardless being deleted
+    # zzz link stays regardless being deleted because it didn't point to any of source directories
     assert set(merged.iterdir()) == {merged / 'aaa', merged / 'bbb', merged / 'zzz'}
 
-    with pytest.raises(Exception): # due to duplicate file
+    run(from_=[c1, c3], to=merged)
+    # zzz goes now because in points to c3 which is managed
+    assert set(merged.iterdir()) == {merged / 'aaa', merged / 'bbb'}
+
+    with pytest.raises(Exception): # due to duplicate file 'aaa'
         run(from_=[c1, c2], to=merged)
 
-    assert set(merged.iterdir()) == {merged / 'aaa', merged / 'bbb', merged / 'zzz'} # shouldn't change anything
+    assert set(merged.iterdir()) == {merged / 'aaa', merged / 'bbb'} # shouldn't change anything
     # TODO marker file?
 
     aaa1.rmdir()
     run(from_=[c1, c2], to=merged)
-    assert set(merged.iterdir()) == {merged / 'aaa', merged / 'bbb', merged / 'ccc', merged / 'zzz'}
+    assert set(merged.iterdir()) == {merged / 'aaa', merged / 'bbb', merged / 'ccc'}
 
     run(from_=[c1, c2], to=merged)
-    assert set(merged.iterdir()) == {merged / 'aaa', merged / 'bbb', merged / 'ccc', merged / 'zzz'}
+    assert set(merged.iterdir()) == {merged / 'aaa', merged / 'bbb', merged / 'ccc'}
 
     eee = c1 / 'eee'
     eee.mkdir()
 
     run(from_=[c1, c2], to=merged)
-    assert set(merged.iterdir()) == {merged / 'aaa', merged / 'bbb', merged / 'ccc', merged / 'eee', merged / 'zzz'}
+    assert set(merged.iterdir()) == {merged / 'aaa', merged / 'bbb', merged / 'ccc', merged / 'eee'}
 
 
 
