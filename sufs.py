@@ -1,16 +1,24 @@
 #!/usr/bin/env python3
 import argparse
+from fnmatch import fnmatch
 from pathlib import Path
 import sys
 import os
 from os.path import lexists
-from typing import List, Dict
+from typing import List, Dict, Optional
 from subprocess import check_call
 
 
-def run(from_: List[Path], to: Path):
+def run(from_: List[Path], to: Path, ignore: Optional[List[str]]=None):
     assert len(from_) > 0
     assert to.is_dir() and not to.is_symlink()
+
+    def matches(p: Path) -> bool:
+        if ignore is None:
+            return True
+        else:
+            ignored = any(fnmatch(p.name, ii) for ii in ignore)
+            return not ignored
 
     # TODO maybe, have init method??
     existing = list(to.iterdir())
@@ -19,7 +27,7 @@ def run(from_: List[Path], to: Path):
         assert p.is_symlink()
 
     # TODO not sure about is_dir here
-    sets = [set(x for x in p.iterdir() if x.is_dir()) for p in from_]
+    sets = [set(x for x in p.iterdir() if x.is_dir() and matches(x)) for p in from_]
 
     spec: Dict[str, Path] = {}
     errors = False
@@ -74,12 +82,13 @@ def run(from_: List[Path], to: Path):
 def main():
     p = argparse.ArgumentParser()
     p.add_argument('--to', type=Path, required=True)
+    p.add_argument('--ignore', type=str, action='append', help="Glob to ignore certain subdirectories (e.g. .dropbox.cache if you're using Dropbox)", required=False)
     p.add_argument('sources', type=Path, nargs='+')
     # TODO inotify and run as systemd service?
     # TODO what to do with broken symliks?
     # TODO assert no regular files
     args = p.parse_args()
-    run(from_=args.sources, to=args.to)
+    run(from_=args.sources, to=args.to, ignore=args.ignore)
 
 
 def test(tmp_path):
