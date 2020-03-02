@@ -9,6 +9,11 @@ from typing import List, Dict, Optional
 from subprocess import check_call
 
 
+# indicates that the directory is managed by sufs
+# TODO later, link back to the sources as well?
+_MARKER = '.symlinkfs'
+
+
 def run(from_: List[Path], to: Path, ignore: Optional[List[str]]=None):
     assert len(from_) > 0
     assert to.is_dir() and not to.is_symlink()
@@ -24,7 +29,8 @@ def run(from_: List[Path], to: Path, ignore: Optional[List[str]]=None):
     existing = list(to.iterdir())
 
     for p in existing:
-        assert p.is_symlink()
+        if p.name != _MARKER:
+            assert p.is_symlink()
 
     # TODO not sure about is_dir here
     sets = [set(x for x in p.iterdir() if x.is_dir() and matches(x)) for p in from_]
@@ -74,6 +80,8 @@ def run(from_: List[Path], to: Path, ignore: Optional[List[str]]=None):
                     old.unlink()
             print(f"linking  {old} -> {src}", file=sys.stderr)
             old.symlink_to(src)
+
+        (to / _MARKER).mkdir(exist_ok=True)
     finally:
         check_call(['chmod', 'ugo-w', str(to)])
 
@@ -117,9 +125,20 @@ def test(tmp_path):
     merged.mkdir(parents=True)
 
 
+    # TODO maybe, return filenames instead?
+    def get():
+        res = set(merged.iterdir())
+        mrk = merged / _MARKER
+        assert mrk in res
+        res.remove(mrk)
+        return res
+
 
     run(from_=[c1], to=merged)
-    assert set(merged.iterdir()) == {merged / 'aaa', merged / 'bbb'}
+    assert get() == {
+        merged / 'aaa',
+        merged / 'bbb',
+    }
 
 
     # should set proper permissions after
@@ -127,36 +146,43 @@ def test(tmp_path):
         (merged / 'alalala').touch()
 
     run(from_=[c1, c3], to=merged)
-    assert set(merged.iterdir()) == {merged / 'aaa', merged / 'bbb', merged / 'zzz'}
+    assert get() == {
+        merged / 'aaa',
+        merged / 'bbb',
+        merged / 'zzz',
+    }
 
     zzz.rmdir()
     run(from_=[c1], to=merged)
     # zzz link stays regardless being deleted because it didn't point to any of source directories
-    assert set(merged.iterdir()) == {merged / 'aaa', merged / 'bbb', merged / 'zzz'}
+    assert get() == {
+        merged / 'aaa',
+        merged / 'bbb',
+        merged / 'zzz',
+    }
 
     run(from_=[c1, c3], to=merged)
     # zzz goes now because in points to c3 which is managed
-    assert set(merged.iterdir()) == {merged / 'aaa', merged / 'bbb'}
+    assert get() == {merged / 'aaa', merged / 'bbb'}
 
     with pytest.raises(Exception): # due to duplicate file 'aaa'
         run(from_=[c1, c2], to=merged)
 
-    assert set(merged.iterdir()) == {merged / 'aaa', merged / 'bbb'} # shouldn't change anything
+    assert get() == {merged / 'aaa', merged / 'bbb'} # shouldn't change anything
     # TODO marker file?
 
     aaa1.rmdir()
     run(from_=[c1, c2], to=merged)
-    assert set(merged.iterdir()) == {merged / 'aaa', merged / 'bbb', merged / 'ccc'}
+    assert get() == {merged / 'aaa', merged / 'bbb', merged / 'ccc'}
 
     run(from_=[c1, c2], to=merged)
-    assert set(merged.iterdir()) == {merged / 'aaa', merged / 'bbb', merged / 'ccc'}
+    assert get() == {merged / 'aaa', merged / 'bbb', merged / 'ccc'}
 
     eee = c1 / 'eee'
     eee.mkdir()
 
     run(from_=[c1, c2], to=merged)
-    assert set(merged.iterdir()) == {merged / 'aaa', merged / 'bbb', merged / 'ccc', merged / 'eee'}
-
+    assert get() == {merged / 'aaa', merged / 'bbb', merged / 'ccc', merged / 'eee'}
 
 
 if __name__ == '__main__':
