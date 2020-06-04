@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-import argparse
 from fnmatch import fnmatch
 from pathlib import Path
 import sys
@@ -16,7 +15,7 @@ _MARKER = '.symlinkfs'
 
 def run(from_: List[Path], to: Path, ignore: Optional[List[str]]=None):
     assert len(from_) > 0
-    assert to.is_dir() and not to.is_symlink()
+    assert to.resolve().is_dir(), to
 
     def matches(p: Path) -> bool:
         if ignore is None:
@@ -30,7 +29,7 @@ def run(from_: List[Path], to: Path, ignore: Optional[List[str]]=None):
 
     for p in existing:
         if p.name != _MARKER:
-            assert p.is_symlink()
+            assert p.is_symlink(), p
 
     # TODO not sure about is_dir here
     sets = [set(x for x in p.iterdir() if x.is_dir() and matches(x)) for p in from_]
@@ -86,8 +85,8 @@ def run(from_: List[Path], to: Path, ignore: Optional[List[str]]=None):
         check_call(['chmod', 'ugo-w', str(to)])
 
 
-
 def main():
+    import argparse
     p = argparse.ArgumentParser()
     p.add_argument('--to', type=Path, required=True)
     p.add_argument('--ignore', type=str, action='append', help="Glob to ignore certain subdirectories (e.g. .dropbox.cache if you're using Dropbox)", required=False)
@@ -99,10 +98,31 @@ def main():
     run(from_=args.sources, to=args.to, ignore=args.ignore)
 
 
-def test(tmp_path):
+def test_nonexistent(tmp_path: Path) -> None:
     import pytest # type: ignore
 
-    tdir = Path(tmp_path)
+    with pytest.raises(Exception): # due to nonexistent target dir
+        run(from_=[tmp_path / 'c1', tmp_path / 'c2'], to=tmp_path / 'nosuchdir')
+
+
+def test(tmp_path: Path) -> None:
+    merged = tmp_path / 'merged'
+    merged.mkdir()
+    _test_helper(tdir=tmp_path, merged=merged)
+
+
+def test_symlink(tmp_path: Path) -> None:
+    merged = tmp_path / 'merged'
+    merged.mkdir()
+
+    link = tmp_path / 'link'
+    link.symlink_to(merged)
+    _test_helper(tdir=tmp_path, merged=link)
+
+
+def _test_helper(tdir: Path, merged: Path) -> None:
+    import pytest # type: ignore
+
     c1 = tdir / 'c1'
     aaa1 = c1 / 'aaa'
     bbb  = c1 / 'bbb'
@@ -118,11 +138,6 @@ def test(tmp_path):
     fff = c1 / 'file'
     fff.touch()
 
-    merged = tdir / 'merged'
-
-    with pytest.raises(Exception): # due to nonexistent dir
-        run(from_=[c1, c2], to=merged)
-    merged.mkdir(parents=True)
 
 
     # TODO maybe, return filenames instead?
